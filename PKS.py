@@ -18,6 +18,22 @@ class Client:
         self.server_ip = server_ip
         self.server_port = server_port
 
+    def three_way_handshake(self):
+        # Step 1: Send SYN to the server
+        print("Sending SYN to the server...")
+        self.send_message("SYN")
+        
+        # Step 2: Receive SYN-ACK from the server
+        response = self.receive()
+        if response == "SYN-ACK":
+            print("Received SYN-ACK from the server...")
+            
+            # Step 3: Send ACK to the server
+            print("Sending ACK to the server...")
+            self.send_message("ACK")
+            return True
+        return False
+
     def send_message(self, message):
         """Send a message to the server (or peer)."""
         self.sock.sendto(message.encode("utf-8"), (self.server_ip, self.server_port))
@@ -40,11 +56,39 @@ class Server:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((ip, port))  # Bind to server's IP and port
 
+<<<<<<< Updated upstream
     def receive_message(self):
         """Receive messages from the client (or peer)."""
         while True:
             data, self.client = self.sock.recvfrom(1024)  # Buffer size is 1024 bytes
             print("Received from client:", data.decode("utf-8"))
+=======
+    def receive(self):
+        data = None;
+        while data == None:
+            data, self.client= self.sock.recvfrom(1024); #buffer size is 1024 bytes
+        print("Received message: %s" % data);
+        #return data # 1
+        return str(data,encoding="utf-8")
+    
+    def three_way_handshake(self):
+        # Step 1: Receive SYN from the client
+        print("Waiting for SYN from client...")
+        message = self.receive()
+        if message == "SYN":
+            print("Received SYN from client...")
+
+            # Step 2: Send SYN-ACK to the client
+            print("Sending SYN-ACK to the client...")
+            self.send_response("SYN-ACK")
+
+            # Step 3: Receive ACK from the client
+            ack = self.receive()
+            if ack == "ACK":
+                print("Received ACK from client... Connection established!")
+                return True
+        return False
+>>>>>>> Stashed changes
 
     def send_response(self, message):
         """Send a message back to the client (or peer)."""
@@ -57,6 +101,7 @@ class Server:
 
 
 def run_client():
+<<<<<<< Updated upstream
     client = Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT)
 
     # Start a thread for receiving messages from the server (peer)
@@ -89,6 +134,44 @@ def run_server():
             break
         server.send_response(message)
 
+=======
+    client=Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT);
+    """message=input("Input your message:");
+    client.send_message(message);
+    response=client.receive();
+    if response:
+        print(response.decode());
+    else:
+        print("Message not received!");"""
+    # Perform 3-way handshake
+    if client.three_way_handshake():
+        print("Handshake successful. Ready to send data...")
+        message = input("Input your message: ")
+        client.send_message(message)
+    else:
+        print("Handshake failed.")
+    client.quit();
+
+def run_server():
+    server=Server(SERVER_IP, SERVER_PORT);
+    """data=server.receive();
+    if data:
+        server.send_response();
+    else:
+        print("Message not received!");"""
+    # Perform 3-way handshake
+    if server.three_way_handshake():
+        print("Handshake successful. Ready to receive data...")
+        data = server.receive()
+        if data:
+            print(f"Received message: {data}")
+            server.send_response("Message received")
+        else:
+            print("Message not received.")
+    else:
+        print("Handshake failed.")
+    server.quit();
+>>>>>>> Stashed changes
 
 def main():
     role_choice = input("Are you Client or Server? (c/s): ").lower()
