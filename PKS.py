@@ -22,6 +22,7 @@ class Client:
         
         # Step 2: Receive SYN-ACK from the server
         response = self.receive()
+        response=response.decode('utf-8')
         if response == "SYN-ACK":
             print("Received SYN-ACK from the server...")
             
@@ -55,6 +56,7 @@ class Server:
         # Step 1: Receive SYN from the client
         print("Waiting for SYN from client...")
         message = self.receive()
+        print(f"Server received: {message}")
         if message == "SYN":
             print("Received SYN from client...")
 
