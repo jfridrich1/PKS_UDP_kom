@@ -1,0 +1,126 @@
+import socket
+
+CLIENT_IP = "127.0.0.1"  # client host IP
+CLIENT_PORT = 50602  # client port for receiving communication
+SERVER_IP = "192.168.1.106"  # server host IP
+SERVER_PORT = 50601  # server port
+
+class Client:
+    def __init__(self, ip, port, server_ip, server_port) -> None:
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
+        self.server_ip = server_ip
+        self.server_port = server_port
+        # No need to bind on the client side unless necessary
+
+    def receive(self):
+        data, _ = self.sock.recvfrom(1024)  # buffer size is 1024 bytes
+        return data.decode('utf-8')
+
+    def three_way_handshake(self):
+        print("Sending SYN to the server...")
+        self.send_message("SYN")
+
+        response = self.receive()
+        if response == "SYN-ACK":
+            print("Received SYN-ACK from the server...")
+            print("Sending ACK to the server...")
+            self.send_message("ACK")
+            return True
+        return False
+    
+    def chat(self):
+        while True:
+            message = input("You (Client): ")
+            self.send_message(message)
+            if message.lower() == "quit":
+                print("Ending chat from client side...")
+                break
+            response = self.receive()
+            print(f"Server: {response}")
+            if response.lower() == "quit":
+                print("Server ended the chat.")
+                break
+
+    def send_message(self, message):
+        self.sock.sendto(message.encode('utf-8'), (self.server_ip, self.server_port))
+
+    def quit(self):
+        self.sock.close()
+        print("Client closed.")
+
+class Server:
+    def __init__(self, ip, port) -> None:
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
+        self.sock.bind((ip, port))  # Binding to server IP and port
+        self.client = None
+
+    def receive(self):
+        data, self.client = self.sock.recvfrom(1024)  # buffer size is 1024 bytes
+        return data.decode('utf-8')
+
+    def three_way_handshake(self):
+        print("Waiting for SYN from client...")
+        message = self.receive()
+        print(f"Server received: {message}")
+        if message == "SYN":
+            print("Received SYN from client...")
+            print("Sending SYN-ACK to the client...")
+            self.send_response("SYN-ACK")
+
+            ack = self.receive()
+            if ack == "ACK":
+                print("Received ACK from client... Connection established!")
+                return True
+        return False
+
+    def chat(self):
+        while True:
+            message = self.receive()
+            print(f"Client: {message}")
+            if message.lower() == "quit":
+                print("Client ended the chat.")
+                break
+            response = input("You (Server): ")
+            self.send_response(response)
+            if response.lower() == "quit":
+                print("Ending chat from server side...")
+                break
+
+    def send_response(self, message):
+        self.sock.sendto(message.encode('utf-8'), self.client)
+
+    def quit(self):
+        self.sock.close()
+        print("Server closed.")
+
+def run_client():
+    client = Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT)
+
+    if client.three_way_handshake():
+        print("Handshake successful. Ready to send data...")
+        client.chat()
+    else:
+        print("Handshake failed.")
+    client.quit()
+
+def run_server():
+    server = Server(SERVER_IP, SERVER_PORT)
+
+    if server.three_way_handshake():
+        print("Handshake successful. Ready to receive data...")
+        server.chat()
+    else:
+        print("Handshake failed.")
+    server.quit()
+
+def main():
+    main_choice = input("Server/Client? (c/s): ")
+    if main_choice == 'c':
+        run_client()
+    elif main_choice == 's':
+        run_server()
+    else:
+        print("Invalid choice.")
+
+if __name__ == "__main__":
+    main()
