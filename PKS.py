@@ -48,7 +48,7 @@ class Server:
         data = None;
         while data == None:
             data, self.client= self.sock.recvfrom(1024); #buffer size is 1024 bytes
-        print("Received message: %s" % data);
+        #print("Received message: %s" % data);
         #return data # 1
         return str(data,encoding="utf-8")
     
