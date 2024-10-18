@@ -1,5 +1,5 @@
 import socket
-CLIENT_IP = "192.168.1.106" # client host ip A.B.C.D
+CLIENT_IP = "192.168.1.107" # client host ip A.B.C.D
 CLIENT_PORT = 50602 # client port for recieving communication
 SERVER_IP = "192.168.1.108" # Server host ip (public IP) A.B.C.D
 SERVER_PORT = 50601
