@@ -9,6 +9,7 @@ class Client:
         self.sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM); # UDP socket creation
         self.server_ip = server_ip;
         self.server_port = server_port;
+        self.sock.bind((ip, port))  # Bind to the client IP and port
 
     def receive(self):
         data = None;
@@ -31,6 +32,19 @@ class Client:
             self.send_message("ACK")
             return True
         return False
+    
+    def chat(self):
+        while True:
+            message = input("You (Client): ")
+            self.send_message(message)
+            if message.lower() == "quit":
+                print("Ending chat from client side...")
+                break
+            response = self.receive()
+            print(f"Server: {response}")
+            if response.lower() == "quit":
+                print("Server ended the chat.")
+                break
 
     def send_message(self, message):
         self.sock.sendto(bytes(message,encoding="utf-8"),(self.server_ip,self.server_port));
@@ -43,6 +57,7 @@ class Server:
     def __init__(self, ip, port) -> None:
         self.sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM); # UDP socket creation
         self.sock.bind((ip, port)); #needs to be tuple (string,int)
+        self.client = None
 
     def receive(self):
         data = None;
@@ -71,8 +86,19 @@ class Server:
                 return True
         return False
 
-    #def send_response(self):
-    #    self.sock.sendto(b"Message received... closing connection",self.client);
+    def chat(self):
+        while True:
+            message = self.receive()
+            print(f"Client: {message}")
+            if message.lower() == "quit":
+                print("Client ended the chat.")
+                break
+            response = input("You (Server): ")
+            self.send_response(response)
+            if response.lower() == "quit":
+                print("Ending chat from server side...")
+                break
+
     def send_response(self, message):
         self.sock.sendto(message.encode('utf-8'), self.client)
 
@@ -82,38 +108,22 @@ class Server:
 
 def run_client():
     client=Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT);
-    """message=input("Input your message:");
-    client.send_message(message);
-    response=client.receive();
-    if response:
-        print(response.decode());
-    else:
-        print("Message not received!");"""
+
     # Perform 3-way handshake
     if client.three_way_handshake():
         print("Handshake successful. Ready to send data...")
-        message = input("Input your message: ")
-        client.send_message(message)
+        client.chat();
     else:
         print("Handshake failed.")
     client.quit();
 
 def run_server():
     server=Server(SERVER_IP, SERVER_PORT);
-    """data=server.receive();
-    if data:
-        server.send_response();
-    else:
-        print("Message not received!");"""
+
     # Perform 3-way handshake
     if server.three_way_handshake():
         print("Handshake successful. Ready to receive data...")
-        data = server.receive()
-        if data:
-            print(f"Received message: {data}")
-            server.send_response("Message received")
-        else:
-            print("Message not received.")
+        server.chat()
     else:
         print("Handshake failed.")
     server.quit();
