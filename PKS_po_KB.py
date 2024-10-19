@@ -1,5 +1,6 @@
 import socket
 import threading
+import struct
 
 CLIENT_IP = "192.168.1.107"  # client host IP A.B.C.D
 CLIENT_PORT = 50602  # client port for receiving communication
@@ -7,12 +8,25 @@ SERVER_IP = "192.168.1.108"  # server host IP (public IP) A.B.C.D
 SERVER_PORT = 50601
 
 class Header:
-    def __init__(self, seq_number, flags, mess_type, checksum, payload_size, payload) -> None:
-        pass
-    def build_packet(self):
-        pass
-    def parse_packet(self, packet):#bez self
-        pass
+    def __init__(self, mess_type, flags, payload_size, total_frag, frag_offset, checksum, payload) -> None:
+        #8B header
+        self.mess_type=mess_type
+        self.flags=flags
+        self.payload_size=payload_size
+        self.total_frag=total_frag
+        self.frag_offset=frag_offset
+        self.checksum=checksum
+        self.payload=payload;
+
+    def build_packet(self):#Network, 1B(8 flags), 2B(0-2^16),       1B(0-255),        2B(0-2^16),         2B([%]0-2^16)
+        head=struct.pack('!B H B H H', self.flags, self.payload_size, self.total_frag, self.frag_offset, self.checksum)
+        head=head+self.payload
+        return head
+    
+    def parse_packet(packet):
+        head=packet[:8]
+        flags,payload_size,total_frag,frag_offset,checksum=struct.unpack('!B H B H H', head)
+        payload=packet[10:10+payload_size]
 
 class Client:
     def __init__(self, ip, port, server_ip, server_port) -> None:
@@ -20,10 +34,10 @@ class Client:
         self.server_ip = server_ip
         self.server_port = server_port
         self.sock.bind((ip, port))  # Bind to the client IP and port
-        self.running = True  # Control flag to stop threads
+        self.running_th = True  # Control flag to stop threads
 
     def receive(self):
-        while self.running:
+        while self.running_th:
             try:
                 data, _ = self.sock.recvfrom(1024)  # Buffer size is 1024 bytes
                 #parsenut data
@@ -32,11 +46,11 @@ class Client:
                 break
 
     def send(self):
-        while self.running:
+        while self.running_th:
             message = input("You (Client): ")
             self.send_message(message)
             if message.lower() == "quit":
-                self.running = False
+                self.running_th = False
                 break
 
     def three_way_handshake(self):
@@ -60,7 +74,7 @@ class Client:
         self.sock.sendto(bytes(message, encoding="utf-8"), (self.server_ip, self.server_port))
 
     def quit(self):
-        self.running = False
+        self.running_th = False
         self.sock.close()
         print("Client closed...")
 
@@ -69,10 +83,10 @@ class Server:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
         self.sock.bind((ip, port))  # Needs to be tuple (string, int)
         self.client = None
-        self.running = True  # Control flag to stop threads
+        self.running_th = True  # Control flag to stop threads
 
     def receive(self):
-        while self.running:
+        while self.running_th:
             try:
                 data, self.client = self.sock.recvfrom(1024)  # Buffer size is 1024 bytes
                 #parsenut data
@@ -81,11 +95,11 @@ class Server:
                 break
 
     def send(self):
-        while self.running:
+        while self.running_th:
             message = input("You (Server): ")
             self.send_response(message)
             if message.lower() == "quit":
-                self.running = False
+                self.running_th = False
                 break
 
     def three_way_handshake(self):
@@ -112,7 +126,7 @@ class Server:
             self.sock.sendto(message.encode('utf-8'), self.client)
 
     def quit(self):
-        self.running = False
+        self.running_th = False
         self.sock.close()
         print("Server closed...")
 
