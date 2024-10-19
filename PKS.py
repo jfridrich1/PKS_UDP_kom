@@ -163,7 +163,7 @@ def main():
     elif main_choice == 's':
         run_server()
     else:
-        print("Invalid choice")
+        print("Invalid id")
 
 if __name__ == "__main__":
     main()
