@@ -2,9 +2,9 @@ import socket
 import threading
 import struct
 
-CLIENT_IP = "192.168.1.107"  # client host IP A.B.C.D
-CLIENT_PORT = 50602  # client port for receiving communication
-SERVER_IP = "192.168.1.108"  # server host IP (public IP) A.B.C.D
+CLIENT_IP = "192.168.1.107"  # client host IP 
+CLIENT_PORT = 50602
+SERVER_IP = "192.168.1.108"  # server host IP (public IP)
 SERVER_PORT = 50601
 
 class Header:
@@ -18,15 +18,16 @@ class Header:
         self.checksum=checksum
         self.payload=payload;
 
-    def build_packet(self):#Network, 1B(8 flags), 2B(0-2^16),       1B(0-255),        2B(0-2^16),         2B([%]0-2^16)
+    def buildp(self):#Network, 1B(8 flags), 2B(0-2^16),       1B(0-255),        2B(0-2^16),         2B([%]0-2^16)
         head=struct.pack('!B H B H H', self.flags, self.payload_size, self.total_frag, self.frag_offset, self.checksum)
         head=head+self.payload
         return head
     
-    def parse_packet(packet):
+    def parsep(packet):
         head=packet[:8]
         flags,payload_size,total_frag,frag_offset,checksum=struct.unpack('!B H B H H', head)
         payload=packet[10:10+payload_size]
+        return {'flags': flags,'payload_size':payload_size, 'total_frag': total_frag, 'frag_offset': frag_offset, 'checksum': checksum,'payload': payload}
 
 class Client:
     def __init__(self, ip, port, server_ip, server_port) -> None:
