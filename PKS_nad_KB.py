@@ -33,7 +33,7 @@ class Header:
     def parsep(packet):
         head=packet[:8]
         flags,payload_size,total_frag,frag_offset,checksum=struct.unpack('!B H B H H', head)
-        payload=packet[8:10+payload_size]
+        payload=packet[8:8+payload_size]
         return {'flags': flags,'payload_size':payload_size, 'total_frag': total_frag, 'frag_offset': frag_offset, 'checksum': checksum,'payload': payload}
 
 class Client:
