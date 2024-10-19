@@ -9,25 +9,31 @@ SERVER_PORT = 50601
 
 
 class Header:
-    def __init__(self, mess_type, flags, payload_size, total_frag, frag_offset, checksum, payload) -> None:
+    def __init__(self, flags, payload_size, total_frag, frag_offset, checksum, payload) -> None:
         #8B header
-        self.mess_type=mess_type
-        self.flags=flags
-        self.payload_size=payload_size
-        self.total_frag=total_frag
-        self.frag_offset=frag_offset
-        self.checksum=checksum
-        self.payload=payload;
+        self.flags = flags
+        self.payload_size = payload_size
+        self.total_frag = total_frag
+        self.frag_offset = frag_offset
+        self.checksum = checksum
+        self.payload = payload
 
-    def buildp(self):#Network, 1B(8 flags), 2B(0-2^16),       1B(0-255),        2B(0-2^16),         2B([%]0-2^16)
-        head=struct.pack('!B H B H H', self.flags, self.payload_size, self.total_frag, self.frag_offset, self.checksum)
-        head=head+self.payload
-        return head
+    def buildp(self):
+        # Ensure payload is in bytes form
+        if isinstance(self.payload, str):
+            self.payload = self.payload.encode('utf-8')
+
+        # Pack the header fields into bytes
+        head = struct.pack('!B H B H H', self.flags, self.payload_size, self.total_frag, self.frag_offset, self.checksum)
+        
+        # Concatenate the header and payload
+        return head + self.payload
+
     
     def parsep(packet):
         head=packet[:8]
         flags,payload_size,total_frag,frag_offset,checksum=struct.unpack('!B H B H H', head)
-        payload=packet[10:10+payload_size]
+        payload=packet[8:10+payload_size]
         return {'flags': flags,'payload_size':payload_size, 'total_frag': total_frag, 'frag_offset': frag_offset, 'checksum': checksum,'payload': payload}
 
 class Client:
@@ -41,16 +47,29 @@ class Client:
     def receive(self):
         while self.running_th:
             try:
-                data, _ = self.sock.recvfrom(1024)  # Buffer size is 1024 bytes
-                #parsenut data
-                print(f"\nServer: {data.decode('utf-8')}")
-            except:
+                data, _ = self.sock.recvfrom(1024)  #Buffer size is 1024 (data = 1024-8[header])
+                
+                packet=Header.parsep(data)
+                print(f"\nReceived packet: {packet}")
+                
+                #print(f"\nServer: {data.decode('utf-8')}")
+            except: 
                 break
 
     def send(self):
         while self.running_th:
             message = input("You (Client): ")
-            self.send_message(message)
+
+            flags=1
+            payload_size=len(message)
+            total_frag=2
+            frag_offset=3
+            checksum=1234
+            packet=Header(flags,payload_size,total_frag,frag_offset,checksum,message)
+            self.send_message(packet.buildp())
+
+
+            #self.send_message(message)
             if message.lower() == "quit":
                 self.running_th = False
                 break
@@ -73,7 +92,12 @@ class Client:
         return False
 
     def send_message(self, message):
-        self.sock.sendto(bytes(message, encoding="utf-8"), (self.server_ip, self.server_port))
+        # Check if the message is a string, convert it to bytes if necessary
+        if isinstance(message, str):
+            message = message.encode('utf-8')  # Convert string to bytes
+
+        self.sock.sendto(message, (self.server_ip, self.server_port))
+
 
     def quit(self):
         self.running_th = False
@@ -87,19 +111,37 @@ class Server:
         self.client = None
         self.running_th = True  # Control flag to stop threads
 
+    def send_message(self, message):
+        # Check if the message is a string, convert it to bytes if necessary
+        if isinstance(message, str):
+            message = message.encode('utf-8')  # Convert string to bytes
+
+        if self.client:
+            self.sock.sendto(message, self.client)
+
     def receive(self):
         while self.running_th:
             try:
                 data, self.client = self.sock.recvfrom(1024)  # Buffer size is 1024 bytes
-                #parsenut data
-                print(f"\nClient: {data.decode('utf-8')}")
+                
+                packet = Header.parsep(data)
+                print(f"\nReceived packet: {packet}")
+
             except:
                 break
 
     def send(self):
         while self.running_th:
             message = input("You (Server): ")
-            self.send_response(message)
+
+            flags = 1
+            payload_size = len(message)
+            total_frag = 2
+            frag_offset = 3
+            checksum = 1234
+            packet = Header(flags, payload_size, total_frag, frag_offset, checksum, message)
+            self.send_message(packet.buildp())
+
             if message.lower() == "quit":
                 self.running_th = False
                 break
@@ -131,6 +173,7 @@ class Server:
         self.running_th = False
         self.sock.close()
         print("Server closed...")
+
 
 def run_client():
     client = Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT)
