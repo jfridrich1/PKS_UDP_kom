@@ -6,6 +6,14 @@ CLIENT_PORT = 50602  # client port for receiving communication
 SERVER_IP = "192.168.1.108"  # server host IP (public IP) A.B.C.D
 SERVER_PORT = 50601
 
+class Header:
+    def __init__(self, seq_number, flags, mess_type, checksum, payload_size, payload) -> None:
+        pass
+    def build_packet(self):
+        pass
+    def parse_packet(self, packet):#bez self
+        pass
+
 class Client:
     def __init__(self, ip, port, server_ip, server_port) -> None:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP socket creation
@@ -18,6 +26,7 @@ class Client:
         while self.running:
             try:
                 data, _ = self.sock.recvfrom(1024)  # Buffer size is 1024 bytes
+                #parsenut data
                 print(f"\nServer: {data.decode('utf-8')}")
             except:
                 break
@@ -66,6 +75,7 @@ class Server:
         while self.running:
             try:
                 data, self.client = self.sock.recvfrom(1024)  # Buffer size is 1024 bytes
+                #parsenut data
                 print(f"\nClient: {data.decode('utf-8')}")
             except:
                 break
