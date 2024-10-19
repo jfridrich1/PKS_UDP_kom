@@ -2,10 +2,11 @@ import socket
 import threading
 import struct
 
-CLIENT_IP = "192.168.1.107"  # client host IP 
+CLIENT_IP = "127.0.0.1"  # Use localhost for testing on the same machine
 CLIENT_PORT = 50602
-SERVER_IP = "192.168.1.108"  # server host IP (public IP)
+SERVER_IP = "127.0.0.1"  # Use localhost for testing on the same machine
 SERVER_PORT = 50601
+
 
 class Header:
     def __init__(self, mess_type, flags, payload_size, total_frag, frag_offset, checksum, payload) -> None:
