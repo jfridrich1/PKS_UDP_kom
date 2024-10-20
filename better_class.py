@@ -109,7 +109,7 @@ class Client(Peer):
         self.server_ip=server_ip
         self.server_port=server_port
 
-        print("Sending SYN to the server...")
+        print("Sending SYN...")
         self.send_message("SYN", (self.server_ip, self.server_port))  #serverova adresa
 
         #odpoved na SYN
@@ -118,7 +118,7 @@ class Client(Peer):
         if response=="SYN-ACK":
 
             #debug
-            print("Received SYN-ACK from the server...")
+            print("Received SYN-ACK...")
             print("Sending ACK to the server...")
             self.send_message("ACK", self.peer_address)  #posli ACK serveru
             return True
@@ -135,16 +135,16 @@ class Server(Peer):
     #serverova verzia 3w shaku
     def three_way_hs_s(self):
         #vypis po zvoleni servera
-        print("Waiting for SYN from client...")
+        print("Waiting for SYN...")
 
         #prichod SYN
         message, self.peer_address=self.sock.recvfrom(1024) #klientova adresa
         message=message.decode('utf-8')
         if message=="SYN":
-            print("Received SYN from client...")
+            print("Received SYN...")
 
             #posli odpoved na SYN -> SYN-ACK, debug
-            print("Sending SYN-ACK to the client...")
+            print("Sending SYN-ACK...")
             self.send_message("SYN-ACK", self.peer_address)
 
             #odpoved na SYN-ACK -> ACK
@@ -152,7 +152,7 @@ class Server(Peer):
             if ack.decode('utf-8')=="ACK":
 
                 #prijaty ACk, debug
-                print("Received ACK from client, connection complete!")
+                print("Received ACK, connection complete!")
                 return True
         return False
 
