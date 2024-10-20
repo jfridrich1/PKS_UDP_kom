@@ -2,10 +2,6 @@ import socket
 import threading
 import struct
 
-CLIENT_IP = "127.0.0.1"
-CLIENT_PORT = 50602
-SERVER_IP = "127.0.0.1"
-SERVER_PORT = 50601
 
 class Header:
     def __init__(self, flags, payload_size, total_frag, frag_offset, checksum, payload) -> None:
@@ -76,7 +72,7 @@ class Peer:
 
             #skladanie packetu,inc 
             packet=Header(flags, payload_size, total_frag, frag_offset, checksum, data)
-            self.send_message(packet.build_packet())
+            self.send_message(packet.build_packet(),self.peer_address)
 
             #pokus o ukoncenie spojenia
             """print(f"toto je data: {data}")
@@ -101,15 +97,18 @@ class Peer:
         print(f"{self.__class__.__name__} closed...")
 
 class Client(Peer):
-    def __init__(self, ip, port, server_ip, server_port) -> None:
-        super().__init__(ip, port)
-        self.server_ip=server_ip
-        self.server_port=server_port
-        self.peer_address=(server_ip, server_port)  #servers address na posielanie
+    def __init__(self) -> None:
+        super().__init__("127.0.0.1", 50601)
+        self.server_ip=None
+        self.server_port=None
+        #servers address na posielanie
 
     #klientova verzia 3w shaku
-    def three_way_hs_c(self):
+    def three_way_hs_c(self, server_ip, server_port):
         #start 3wHS, debug
+        self.server_ip=server_ip
+        self.server_port=server_port
+
         print("Sending SYN to the server...")
         self.send_message("SYN", (self.server_ip, self.server_port))  #serverova adresa
 
@@ -124,6 +123,10 @@ class Client(Peer):
             self.send_message("ACK", self.peer_address)  #posli ACK serveru
             return True
         return False
+
+    def send_packet(self):
+        self.peer_address=(self.server_ip,self.server_port)
+        super().send_packet()
 
 class Server(Peer):
     def __init__(self, ip, port) -> None:
@@ -155,8 +158,10 @@ class Server(Peer):
 
 #klient main
 def run_client():
-    client=Client(CLIENT_IP, CLIENT_PORT, SERVER_IP, SERVER_PORT)
-    if client.three_way_hs_c()==True:
+    server_ip=input("Server IP:")
+    server_port=int(input("Server port:"))
+    client=Client()
+    if client.three_way_hs_c(server_ip,server_port)==True:
         print("Handshake successful. Chat ready!")
         client.chatting()
     else:
@@ -165,7 +170,7 @@ def run_client():
 
 #server main
 def run_server():
-    server = Server(SERVER_IP, SERVER_PORT)
+    server = Server("127.0.0.1", 50602)
     if server.three_way_hs_s()==True:
         print("Handshake successful. Chat ready!")
         server.chatting()
@@ -189,3 +194,4 @@ if __name__=="__main__":
 #upravit velkost bufferu - 1024
 #doriesit printy ako You (trieda) - odstranit / fixnut
 #ako seknut komunikaciu
+#spravit nech klient ip nie je local ale hocijaka
