@@ -157,39 +157,45 @@ class Server(Peer):
                 return True
         return False
 
-#klient main
-def run_client():
-    server_ip=input("Server IP (127.0.0.1):")
-    server_port=int(input("Server port (50602):"))
-    client=Client()
-    if client.three_way_hs_c(server_ip,server_port)==True:
-        print("Handshake successful, ready for chat!")
-        client.chatting()
-    else:
-        print("Handshake error.")
-    client.quit()
+class Main:
+    def __init__(self):
+        self.client = None
+        self.server = None
 
-#server main
-def run_server():
-    server = Server("127.0.0.1", 50602)
-    if server.three_way_hs_s()==True:
-        print("Handshake successful, ready for chat!")
-        server.chatting()
-    else:
-        print("Handshake error.")
-    server.quit()
+    def run_client(self):
+        server_ip = input("Server IP (127.0.0.1):")
+        server_port = int(input("Server port (50602):"))
+        self.client = Client()
+        if self.client.three_way_hs_c(server_ip, server_port):
+            print("Handshake successful, ready for chat!")
+            self.client.chatting()
+        else:
+            print("Handshake error.")
+        self.client.quit()
 
-def main():
-    main_choice=input("Server/Client? (c/s): ")
-    if main_choice=='c':
-        run_client()
-    elif main_choice=='s':
-        run_server()
-    else:
-        print("Invalid command.")
+    def run_server(self):
+        self.server = Server("127.0.0.1", 50602)
+        if self.server.three_way_hs_s():
+            print("Handshake successful, ready for chat!")
+            self.server.chatting()
+        else:
+            print("Handshake error.")
+        self.server.quit()
 
-if __name__=="__main__":
-    main()
+    def start(self):
+        main_choice = input("Server/Client? (c/s): ")
+        if main_choice == 'c':
+            self.run_client()
+        elif main_choice == 's':
+            self.run_server()
+        else:
+            print("Invalid command.")
+
+
+if __name__ == "__main__":
+    p2p_chat = Main()
+    p2p_chat.start()
+
 
 
 #upravit velkost bufferu - 1024
