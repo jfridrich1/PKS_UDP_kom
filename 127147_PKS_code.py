@@ -109,7 +109,7 @@ class Client(Peer):
         self.server_ip=server_ip
         self.server_port=server_port
 
-        print("Sending SYN...")
+        print("Send SYN...")
         self.send_message("SYN", (self.server_ip, self.server_port))  #serverova adresa
 
         #odpoved na SYN
@@ -119,7 +119,7 @@ class Client(Peer):
 
             #debug
             print("Received SYN-ACK...")
-            print("Sending ACK to the server...")
+            print("Send ACK...")
             self.send_message("ACK", self.peer_address)  #posli ACK serveru
             return True
         return False
@@ -135,7 +135,7 @@ class Server(Peer):
     #serverova verzia 3w shaku
     def three_way_hs_s(self):
         #vypis po zvoleni servera
-        print("Waiting for SYN...")
+        print("Wait for SYN...")
 
         #prichod SYN
         message, self.peer_address=self.sock.recvfrom(1024) #klientova adresa
@@ -144,7 +144,7 @@ class Server(Peer):
             print("Received SYN...")
 
             #posli odpoved na SYN -> SYN-ACK, debug
-            print("Sending SYN-ACK...")
+            print("Send SYN-ACK...")
             self.send_message("SYN-ACK", self.peer_address)
 
             #odpoved na SYN-ACK -> ACK
@@ -158,11 +158,11 @@ class Server(Peer):
 
 #klient main
 def run_client():
-    server_ip=input("Server IP:")
-    server_port=int(input("Server port:"))
+    server_ip=input("Server IP (127.0.0.1):")
+    server_port=int(input("Server port (50602):"))
     client=Client()
     if client.three_way_hs_c(server_ip,server_port)==True:
-        print("Handshake successful. Chat ready!")
+        print("Handshake successful, ready for chat!")
         client.chatting()
     else:
         print("Handshake error.")
@@ -172,7 +172,7 @@ def run_client():
 def run_server():
     server = Server("127.0.0.1", 50602)
     if server.three_way_hs_s()==True:
-        print("Handshake successful. Chat ready!")
+        print("Handshake successful, ready for chat!")
         server.chatting()
     else:
         print("Handshake error.")
