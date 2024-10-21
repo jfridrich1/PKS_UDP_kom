@@ -53,7 +53,8 @@ class Peer:
 
             #debug
             print(f"\nReceived packet: {packet}")
-            print(f"Received message: {packet['payload']}")
+            packet_decode=packet['payload'].decode('utf-8')
+            print(f"Received message: {packet_decode}")
 
     #metoda odoslania packetu
     def send_packet(self):
