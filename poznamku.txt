@@ -1,0 +1,2 @@
+total fragments zbytocne pole, iba zbutcone budem prenasat konstantu, radsej cez nejkay message type alebo frag
+lepsie vysvetlit CRC kedze idem pozuivat kniznicu
