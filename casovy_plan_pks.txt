@@ -1,0 +1,5 @@
+Casovy plan:
+22.11 - upravit konecne Zakladna funkcnost spojenia + Fragmentacia (cela)?
+23.11 - dokoncenie Fragmentacie + Selective Repeat
+24.11 - Selective Repeat + Keep Alive + Lua skript
+25.11 - dokumentacia
