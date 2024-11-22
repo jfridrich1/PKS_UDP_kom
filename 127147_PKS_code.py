@@ -202,3 +202,13 @@ if __name__ == "__main__":
 #doriesit printy ako You (trieda) - odstranit / fixnut
 #ako seknut komunikaciu
 #spravit nech klient ip nie je local ale hocijaka
+
+
+
+#zmenit hlavicku a implementaciu, asi ta varianta bez signal bitu
+#fagmentacia - nastudovat este lebo nevien abslitne co robit este
+    #metoda fragmentation()
+    #???
+#poskodenie a strata dat - Selective Repeat SR, mozno tu vylepsienu metodu
+    #metoda Selective Repeat
+#Keep Alive - heartbeat mozno este dneska
