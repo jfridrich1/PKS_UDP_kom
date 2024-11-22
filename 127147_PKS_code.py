@@ -206,9 +206,10 @@ if __name__ == "__main__":
 
 
 #zmenit hlavicku a implementaciu, asi ta varianta bez signal bitu
+    #upravit class Header cely -
+        #init, build_packet, parse_packet
 #fagmentacia - nastudovat este lebo nevien abslitne co robit este
-    #metoda fragmentation()
-    #???
+    #metoda fragmentation() a kopu dalsich
 #poskodenie a strata dat - Selective Repeat SR, mozno tu vylepsienu metodu
     #metoda Selective Repeat
 #Keep Alive - heartbeat mozno este dneska
