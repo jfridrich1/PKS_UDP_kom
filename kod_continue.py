@@ -203,23 +203,6 @@ class Peer:
                 self.send_message(packet.build_packet(), self.peer_address)
                 print(f"Message sent with size: {payload_size} bytes")
 
-            """#default hodnoty na debug
-            payload_size=len(payload)
-            frag_offset=1
-            crc_field=2
-
-            #volanie funkcii spracovania poli (fragmetnt, MT, flagy,...) TU
-
-            #skladanie packetu,inc 
-            packet=Header(flags, payload_size, frag_offset, crc_field, payload)
-            self.send_message(packet.build_packet(),self.peer_address)
-
-            #pokus o ukoncenie spojenia
-            print(f"toto je data: {data}")
-            if data.lower() == "quit":
-                self.running_th = False
-                break"""
-
     #metoda na vymienanie sprav
     def chatting(self):
         recv_thread=threading.Thread(target=self.receive_packet)
@@ -273,16 +256,6 @@ class Client(Peer):
             return True
         return False
 
-
-        """if response=="SYN-ACK":
-
-            #debug
-            print("Received SYN-ACK...")
-            print("Send ACK...")
-            self.send_message("ACK", self.peer_address)  #posli ACK serveru
-            return True
-        return False"""
-
     def send_packet(self):
         self.peer_address=(self.server_ip,self.server_port)
         super().send_packet()
@@ -318,11 +291,7 @@ class Server(Peer):
             if request['flags']['signal'] and response['flags']['ack']:
                 print("Received ACK, connection complete!")
                 return True
-            
-            """if ack.decode('utf-8')=="ACK":
-                #prijaty ACk, debug
-                print("Received ACK, connection complete!")
-                return True"""
+        
         return False
 
 class Main:
@@ -378,9 +347,6 @@ class Main:
 if __name__ == "__main__":
     p2p_chat = Main()
     p2p_chat.start()
-
-
-
 
 #upravit velkost bufferu - 1024
 #doriesit printy ako You (trieda) - odstranit / fixnut
