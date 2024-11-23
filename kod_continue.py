@@ -78,6 +78,9 @@ class Peer:
         self.running_th=True        #threading flag
         self.peer_address=None      #priprava na ulozenie adresy (klienta ak je server, servera ak je klient)
 
+        self.reassembly_buf = {}  # Buffer pre fragmenty
+        self.expected_fragments = None  # Očakávaný počet fragmentov
+
     #odosielanie sprav - pre SYN, SYN ACK, ACK
     def send_message(self, message, receiver=None):
         if isinstance(message, str):
@@ -89,36 +92,118 @@ class Peer:
 
     #metoda prijatia packetu
     def receive_packet(self):
-        while self.running_th:  #threadovanie 
-            data, self.peer_address=self.sock.recvfrom(1024) #zmenit velkost neskor
-            #rozober packet
-            packet=Header.parse_packet(data)
+        while self.running_th:
+            data, self.peer_address = self.sock.recvfrom(2048)
+            # Rozober packet
+            packet = Header.parse_packet(data)
 
-            # Dekóduj obsah podľa flagov
-            #print(f"\nReceived packet: {packet}")
-            if packet['flags']['msg']:
-                print(f"Received message: {packet['payload'].decode('utf-8')}\n")
-            elif packet['flags']['file']:
-                print(f"\nReceived file {packet['payload']}")
+            # Subor
+            if packet['flags']['file']:
+                if packet['flags']['start_frag']:
+                    self.expected_fragments = packet['payload_size']  # Počet fragmentov
+                    self.reassembly_buf = {}  # Vymaž buffer pre novú správu
+                    print(f"Start of fragmented file with {self.expected_fragments} fragments.")
+                else:
+                    # Ulož fragment do bufferu
+                    self.reassembly_buf[packet['frag_offset']] = packet['payload']
+                    print(f"Received fragment {packet['frag_offset']}.")
+
+                    # Ak sú všetky fragmenty prijaté, zrekonštruuj payload
+                    if len(self.reassembly_buf) == self.expected_fragments:
+                        reassembled_payload = b''.join(
+                            self.reassembly_buf[i] for i in sorted(self.reassembly_buf.keys())
+                        )
+                        print(f"Reassembled file received (size: {len(reassembled_payload)} bytes)")
+
+
+                        # Daj používateľovi možnosť zadať priečinok na uloženie
+                        save_dir = input("Enter the directory to save the file (default: current directory): ").strip()
+                        if not save_dir:
+                            save_dir = "."  # Aktuálny pracovný adresár
+                        
+                        save_path = input("Enter the name for the file (default: received_file): ").strip()
+                        if not save_path:
+                            save_path = "received_file"
+
+                        full_path = f"{save_dir.rstrip('/')}/{save_path}"
+
+                        try:
+                            with open(full_path, "wb") as output_file:
+                                output_file.write(reassembled_payload)
+                            print(f"\nFile successfully saved at: {full_path}")
+                        except FileNotFoundError:
+                            print("\nInvalid directory. File not saved.")
+                        except Exception as e:
+                            print(f"\nError saving file: {e}")
+            # Sprava
+            elif packet['flags']['msg']:
+                # Spracuj správu
+                message = packet['payload'].decode('utf-8')
+                print(f"\nReceived message: {message}")
 
     #metoda odoslania packetu
     def send_packet(self):
-        while self.running_th:  #threadovanie
-            #debug, neskor prec
-            #data=input(f"You ({self.__class__.__name__}): ")
-
+        while self.running_th:
+            # Typ správy
             packet_type = input("Type of message? (m for message / f for file): ").strip().lower()
+
             if packet_type == 'f':
                 # Súbor
                 file_path = input("Enter the file path: ").strip()
-                payload=file_path
+                try:
+                    with open(file_path, "rb") as file:
+                        payload = file.read()  # Načítaj obsah súboru
+                except FileNotFoundError:
+                    print("File not found")
+                    continue
+
                 flags = Header.encode_flags(file=True)
+                payload_size = len(payload)
+
+                max_payload_size = int(input("Enter MAX_PAYLOAD_SIZE (default 1024): ") or "1024")
+
+                # Urč počet fragmentov (aj keď sa zmestí do jedného paketu, počet fragmentov je 1)
+                num_fragments = (payload_size + max_payload_size - 1) // max_payload_size
+
+                # Pošli štartovací paket
+                start_frag_flags = flags | (1 << 7)  # Nastav bit start_frag
+                start_packet = Header(start_frag_flags, payload_size=num_fragments, frag_offset=0, crc_field=0, payload=b'')
+                self.send_message(start_packet.build_packet(), self.peer_address)
+                print(f"Start fragment sent with total fragments: {num_fragments}")
+
+                # Ak je počet fragmentov 1 (súbor sa zmestí do jedného paketu)
+                if num_fragments == 1:
+                    frag_offset = 0
+                    crc_field = 0
+                    packet = Header(flags, payload_size, frag_offset, crc_field, payload)
+                    self.send_message(packet.build_packet(), self.peer_address)
+                    print(f"File sent as single packet with size: {payload_size} bytes")
+                else:
+                    # Rozdeľ payload na fragmenty a pošli ich
+                    for i in range(num_fragments):
+                        start = i * max_payload_size
+                        end = min(start + max_payload_size, payload_size)
+                        fragment = payload[start:end]
+
+                        frag_flags = flags  # Bežné flagy (bez start_frag)
+                        packet = Header(frag_flags, len(fragment), i, crc_field=0, payload=fragment)
+                        self.send_message(packet.build_packet(), self.peer_address)
+                        print(f"Fragment {i + 1}/{num_fragments} sent with frag_offset: {i}")
+
+            # Správa
             else:
-                # Správa
                 payload = input("Enter your message: ").strip().encode('utf-8')
                 flags = Header.encode_flags(msg=True)
+                payload_size = len(payload)
+                frag_offset = 0
+                crc_field = 0
 
-            #default hodnoty na debug
+                # Pošli správu ako jediný paket
+                packet = Header(flags, payload_size, frag_offset, crc_field, payload)
+                self.send_message(packet.build_packet(), self.peer_address)
+                print(f"Message sent with size: {payload_size} bytes")
+
+            """#default hodnoty na debug
             payload_size=len(payload)
             frag_offset=1
             crc_field=2
@@ -130,7 +215,7 @@ class Peer:
             self.send_message(packet.build_packet(),self.peer_address)
 
             #pokus o ukoncenie spojenia
-            """print(f"toto je data: {data}")
+            print(f"toto je data: {data}")
             if data.lower() == "quit":
                 self.running_th = False
                 break"""
