@@ -74,6 +74,9 @@ class Header:
 
         # Kontrola
         calculated_crc = binascii.crc_hqx(payload, 0xFFFF)
+        print(f"\nExpected CRC: {crc_field}, Calculated CRC: {calculated_crc}")
+
+        # CRC kontrola
         if calculated_crc != crc_field:
             raise ValueError(f"CRC check failed: expected {crc_field}, got {calculated_crc}")
 
@@ -167,12 +170,14 @@ class Peer:
                 else:
                     self.reassembly_buf[packet['frag_offset']] = packet['payload']
                     print(f"Received fragment {packet['frag_offset']}.")
+                    #print(packet)
 
                     if len(self.reassembly_buf) == self.expected_fragments:
                         reassembled_message = b''.join(
                             self.reassembly_buf[i] for i in sorted(self.reassembly_buf.keys())
                         )
-                        print(f"Reassembled message received: {reassembled_message.decode('utf-8')}")
+                        #print(f"Reassembled message received: {reassembled_message.decode('utf-8')}")
+                        print(f"Reassembled message received: {reassembled_message}")
 
 
     #metoda odoslania packetu
@@ -181,6 +186,7 @@ class Peer:
             # Typ správy
             packet_type = input("Type of message? (m for message / f for file): ").strip().lower()
 
+            # Subor 
             if packet_type == 'f':
                 # Súbor
                 file_path = input("Enter the file path: ").strip()
@@ -192,6 +198,7 @@ class Peer:
                     continue
                 flags = Header.encode_flags(file=True)
 
+            # Sprava
             elif packet_type == 'm':
                 # Správa
                 message = input("Enter your message: ").strip().encode('utf-8')
@@ -205,11 +212,20 @@ class Peer:
             # Spoločné spracovanie fragmentov a odosielanie
             self._send_payload_in_fragments(payload, flags)
 
+
     # Fragmentovanie
     def _send_payload_in_fragments(self, payload, flags):
         payload_size = len(payload)
         max_payload_size = int(input("Enter MAX_PAYLOAD_SIZE (default 1024): ") or "1024")
-
+        
+        # Simulácia poškodenia
+        corruption_choice = input("Simulate corruption? (Y/N): ").strip().upper() == 'Y'
+        corruption_type = None
+        corrupt_fragment = None
+        if corruption_choice:
+            corruption_type = int(input("Corruption type (1: Payload, 2: CRC): "))
+            corrupt_fragment = int(input("Which fragment to corrupt? (1-based index): ")) - 1
+        
         # Urč počet fragmentov
         num_fragments = (payload_size + max_payload_size - 1) // max_payload_size
 
@@ -227,8 +243,26 @@ class Peer:
 
             frag_flags = flags  # Bežné flagy (bez start_frag)
             packet = Header(frag_flags, len(fragment), i, crc_field=0, payload=fragment)
-            self.send_message(packet.build_packet(), self.peer_address)
+            built_packet = packet.build_packet()
+
+            # Aplikácia simulácie poškodenia
+            if corruption_choice and i == corrupt_fragment:
+                if corruption_type == 1:  # Poškodenie payloadu
+                    print(f"Corrupting payload of fragment {i + 1}.")
+                    # Poškodenie payloadu priamo v zostavenom pakete
+                    built_packet = built_packet[:7] + b'\xFF' + built_packet[8:]
+                elif corruption_type == 2:  # Poškodenie CRC
+                    print(f"Corrupting CRC of fragment {i + 1}.")
+                    # Extrakcia a úprava CRC
+                    original_crc = struct.unpack('!H', built_packet[5:7])[0]  # Získaj pôvodný CRC
+                    corrupt_crc = (original_crc + 1) & 0xFFFF  # Pripočítaj 1 a zachovaj 16-bitovú hodnotu
+                    corrupt_crc_bytes = struct.pack('!H', corrupt_crc)  # Zmeň na bajty
+                    built_packet = built_packet[:5] + corrupt_crc_bytes + built_packet[7:]  # Nahraď CRC
+
+            # Odošli (poškodený alebo originálny) paket
+            self.send_message(built_packet, self.peer_address)
             print(f"Fragment {i + 1}/{num_fragments} sent with frag_offset: {i}")
+
 
     #metoda na vymienanie sprav
     def chatting(self):
@@ -375,16 +409,9 @@ if __name__ == "__main__":
     p2p_chat = Main()
     p2p_chat.start()
 
-#upravit velkost bufferu - 1024
-#doriesit printy ako You (trieda) - odstranit / fixnut
-#ako seknut komunikaciu
-#spravit nech klient ip nie je local ale hocijaka
 
 
 
-#zmenit hlavicku a implementaciu, asi ta varianta bez signal bitu
-    #upravit class Header cely -
-        #init, build_packet, parse_packet
 #fagmentacia - nastudovat este lebo nevien abslitne co robit este
     #metoda fragmentation() a kopu dalsich
 #poskodenie a strata dat - Selective Repeat SR, mozno tu vylepsienu metodu
