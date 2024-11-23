@@ -1,6 +1,7 @@
 import socket
 import threading
 import struct
+import binascii
 
 
 class Header:
@@ -48,10 +49,16 @@ class Header:
             "start_frag": bool(flags_byte & (1 << 7)),
         }
 
+    def calculate_crc(self, data: bytes) -> int:
+        return binascii.crc_hqx(data, 0xFFFF)
+
     #toto bude metoda ktora vola vsetky ostatne funkcne metody (fragment, ...)
     def build_packet(self):
         if isinstance(self.payload, str):
             self.payload=self.payload.encode('utf-8')
+
+        #CRC16
+        self.crc_field = self.calculate_crc(self.payload)
         head=struct.pack('!B H H H', self.flags, self.payload_size, self.frag_offset, self.crc_field)
         return head+self.payload
 
@@ -62,6 +69,12 @@ class Header:
         flags, payload_size, frag_offset, crc_field=struct.unpack('!B H H H', head)#1B,2B,2B,2B
         payload=packet[7:7+payload_size] #data/sprava
         decoded_flags = Header.decode_flags(flags)  # Rozloženie flagov
+
+        # Kontrola
+        calculated_crc = binascii.crc_hqx(payload, 0xFFFF)
+        if calculated_crc != crc_field:
+            raise ValueError(f"CRC check failed: expected {crc_field}, got {calculated_crc}")
+
         return {
             'flags':decoded_flags, 
             'payload_size':payload_size, 
@@ -81,7 +94,7 @@ class Peer:
         self.reassembly_buf = {}  # Buffer pre fragmenty
         self.expected_fragments = None  # Očakávaný počet fragmentov
 
-    #odosielanie sprav - pre SYN, SYN ACK, ACK
+    #odosielanie sprav - pre SYN, SYN ACK, ACK, asi mozem odstranit
     def send_message(self, message, receiver=None):
         if isinstance(message, str):
             message=message.encode('utf-8')
