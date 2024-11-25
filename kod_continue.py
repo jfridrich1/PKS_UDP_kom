@@ -75,7 +75,7 @@ class Header:
 
         # Kontrola
         calculated_crc = binascii.crc_hqx(payload, 0xFFFF)
-        print(f"\nExpected CRC: {crc_field}, Calculated CRC: {calculated_crc}")
+        #print(f"\nExpected CRC: {crc_field}, Calculated CRC: {calculated_crc}")
 
         # CRC kontrola
         if calculated_crc != crc_field:
@@ -106,6 +106,8 @@ class Peer:
         self.window_size = 4  # Sliding window veľkosť
         self.unacked_fragments = {}  # Neodpovedané fragmenty: {frag_offset: (time_sent, built_packet)}
 
+        self.is_active = False
+
 
     #odosielanie sprav - pre SYN, SYN ACK, ACK, asi mozem odstranit
     def send_message(self, message, receiver=None):
@@ -116,74 +118,6 @@ class Peer:
         if receiver:
             self.sock.sendto(message, receiver)
 
-    #metoda prijatia packetu
-    """def receive_packet(self):
-        while self.running_th:
-            data, self.peer_address = self.sock.recvfrom(2048)
-            # Rozober packet
-            packet = Header.parse_packet(data)
-
-            # Subor ---------------------------------------------------------------------------------------------------------
-            if packet['flags']['file']:
-
-                # Startovny packet
-                if packet['flags']['start_frag']:
-                    self.expected_fragments = packet['payload_size']  # Počet fragmentov
-                    self.reassembly_buf = {}  # Vymaž buffer pre novú správu
-                    print(f"Start of fragmented file with {self.expected_fragments} fragments.")
-
-                # Nie startovny packet
-                else:
-                    # Ulož fragment do bufferu
-                    self.reassembly_buf[packet['frag_offset']] = packet['payload']
-                    print(f"Received fragment {packet['frag_offset']}.")
-
-                    # Ak sú všetky fragmenty prijaté, zrekonštruuj payload
-                    if len(self.reassembly_buf) == self.expected_fragments:
-                        reassembled_payload = b''.join(
-                            self.reassembly_buf[i] for i in sorted(self.reassembly_buf.keys())
-                        )
-                        print(f"Reassembled file received (size: {len(reassembled_payload)} bytes)")
-
-
-                        # Daj používateľovi možnosť zadať priečinok na uloženie
-                        save_dir = input("Enter the directory to save the file (default: current directory): ").strip()
-                        if not save_dir:
-                            save_dir = "."  # Aktuálny pracovný adresár
-                        
-                        save_path = input("Enter the name for the file (default: received_file): ").strip()
-                        if not save_path:
-                            save_path = "received_file"
-
-                        full_path = f"{save_dir.rstrip('/')}/{save_path}"
-
-                        try:
-                            with open(full_path, "wb") as output_file:
-                                output_file.write(reassembled_payload)
-                            print(f"\nFile successfully saved at: {full_path}")
-                        except FileNotFoundError:
-                            print("\nInvalid directory. File not saved.")
-                        except Exception as e:
-                            print(f"\nError saving file: {e}")
-            
-            # Sprava ---------------------------------------------------------------------------------------------------------
-            elif packet['flags']['msg']:
-                if packet['flags']['start_frag']:
-                    self.expected_fragments = packet['payload_size']
-                    self.reassembly_buf = {}
-                    print(f"Start of fragmented message with {self.expected_fragments} fragments.")
-                else:
-                    self.reassembly_buf[packet['frag_offset']] = packet['payload']
-                    print(f"Received fragment {packet['frag_offset']}.")
-                    #print(packet)
-
-                    if len(self.reassembly_buf) == self.expected_fragments:
-                        reassembled_message = b''.join(
-                            self.reassembly_buf[i] for i in sorted(self.reassembly_buf.keys())
-                        )
-                        #print(f"Reassembled message received: {reassembled_message.decode('utf-8')}")
-                        print(f"Reassembled message received: {reassembled_message}")"""
-
 
     def receive_packet(self):
         while self.running_th:
@@ -192,44 +126,103 @@ class Peer:
                 packet = Header.parse_packet(data)
                 if packet['flags']['ack']:
                     self.handle_ack(packet['frag_offset'])
+                elif packet['flags']['nack']:
+                    self.handle_nack(packet['frag_offset'])
                 elif packet['flags']['msg'] or packet['flags']['file']:
+                    self.is_active = True
                     self.handle_fragment(packet)
+                    self.is_active = False
             except ValueError as e:
                 print(f"Error parsing packet: {e}")
 
 
+    # Spracovanie ACK správ
     def handle_ack(self, frag_offset):
-        """Spracovanie ACK správ."""
-        print(f"Received ACK for fragment {frag_offset}")
+        print(f"+++ Received ACK for fragment {frag_offset+1} +++")
         if frag_offset in self.unacked_fragments:
             del self.unacked_fragments[frag_offset]
             self.acknowledged_fragments.add(frag_offset)
 
+    # Spracovanie NACK správ.
+    def handle_nack(self, frag_offset):
+        print(f"--- Received NACK for fragment {frag_offset+1}. ---")
+        if frag_offset in self.unacked_fragments:
+            _, built_packet = self.unacked_fragments[frag_offset]
+            self.send_message(built_packet, self.peer_address)
+            print(f"--- Retransmitted fragment {frag_offset+1} due to NACK. ---")
 
+    # Spracovanie prijatých fragmentov
     def handle_fragment(self, packet):
-        """Spracovanie prijatých fragmentov."""
         frag_offset = packet['frag_offset']
+
+        if packet['flags']['start_frag']:
+            # Štartovací paket
+            self.expected_fragments = packet['payload_size']
+            self.reassembly_buf = {}  # Inicializácia bufferu pre nový prenos
+            print(f"\n+++ Start packet received. Expecting {self.expected_fragments} fragments. +++")
+            return
+
         if frag_offset in self.reassembly_buf:
             return  # Fragment už prijatý
 
         try:
             # Validácia CRC a ukladanie
             self.reassembly_buf[frag_offset] = packet['payload']
-            print(f"Fragment {frag_offset} received and stored.")
+            print(f"+++ Fragment {frag_offset+1} received and stored. +++")
 
             # Poslať ACK
             ack_flags = Header.encode_flags(ack=True)
             ack_packet = Header(ack_flags, payload_size=0, frag_offset=frag_offset, crc_field=0, payload=b'')
             self.send_message(ack_packet.build_packet(), self.peer_address)
 
+            # Skontrolovať, či sme prijali všetky fragmenty
+            if len(self.reassembly_buf) == self.expected_fragments:
+                print(f"------------- All fragments received ({len(self.reassembly_buf)}). -------------\nReassembling data...")
+                reassembled_data = b''.join(
+                    self.reassembly_buf[i] for i in range(self.expected_fragments)
+                )
+                print(f"+++ Reassembled data (size: {len(reassembled_data)} bytes). +++")
+                
+                # Spracovanie dát na základe flagov
+                if packet['flags']['msg']:
+                    # Ak ide o správu, vypíš ju ako text
+                    print("+++ Received message: +++")
+                    print(reassembled_data.decode('utf-8', errors='replace'))
+                    print("\n")
+                elif packet['flags']['file']:
+                    # Ak ide o súbor, vypýtaj si cestu na uloženie
+                    save_dir = input("Enter the directory to save the file (default: current directory): ").strip() or "."
+                    save_name = input("Enter the file name (default: received_file): ").strip() or "received_file"
+
+                    full_path = f"{save_dir.rstrip('/')}/{save_name}"
+                    try:
+                        with open(full_path, "wb") as file:
+                            file.write(reassembled_data)
+                        print(f"+++ File successfully saved at: {full_path} +++")
+                    except FileNotFoundError:
+                        print("!!! Invalid directory. File not saved. !!!")
+                    except Exception as e:
+                        print(f"!!! Error saving file: {e} !!!")
+
         except ValueError as e:
             print(f"Fragment {frag_offset} failed CRC check: {e}")
+            # Poslať NACK pre poškodený fragment
+            nack_flags = Header.encode_flags(nack=True)
+            nack_packet = Header(nack_flags, payload_size=0, frag_offset=frag_offset, crc_field=0, payload=b'')
+            self.send_message(nack_packet.build_packet(), self.peer_address)
+            print(f"--- Sent NACK for fragment {frag_offset}. ---")
 
 
 
-    #metoda odoslania packetu
+
+    # Metoda odoslania packetu
     def send_packet(self):
         while self.running_th:
+
+            if self.is_active:
+                time.sleep(0.1)
+                continue
+
             # Typ správy
             packet_type = input("Type of message? (m for message / f for file): ").strip().lower()
 
@@ -257,7 +250,9 @@ class Peer:
                 continue
 
             # Spoločné spracovanie fragmentov a odosielanie
+            self.is_active = True
             self._send_payload_in_fragments(payload, flags)
+            self.is_active = False
 
 
 
@@ -266,7 +261,12 @@ class Peer:
         max_payload_size = int(input("Enter MAX_PAYLOAD_SIZE (default 1024): ") or "1024")
         num_fragments = (payload_size + max_payload_size - 1) // max_payload_size
 
-        print(f"Sending payload in {num_fragments} fragments with window size {self.window_size}.")
+        # Odoslanie štartovacieho paketu
+        start_frag_flags = flags | (1 << 7)  # Nastav bit start_frag
+        start_packet = Header(start_frag_flags, payload_size=num_fragments, frag_offset=0, crc_field=0, payload=b'')
+        self.send_message(start_packet.build_packet(), self.peer_address)
+        print(f"+++ Start fragment sent with total fragments: {num_fragments}. +++")
+
         base = 0  # Sliding window začiatok
 
         while base < num_fragments:
@@ -280,12 +280,12 @@ class Peer:
                     built_packet = packet.build_packet()
                     self.send_message(built_packet, self.peer_address)
                     self.unacked_fragments[i] = (time.time(), built_packet)
-                    print(f"Sent fragment {i}/{num_fragments}.")
+                    print(f"--- Sent fragment {i+1}/{num_fragments} ({len(fragment)} bytes). ---")
 
             # Spracovanie timeoutov a retransmisie
             current_time = time.time()
             for frag_offset, (time_sent, built_packet) in list(self.unacked_fragments.items()):
-                if current_time - time_sent > 2:  # Timeout 2 sekundy
+                if current_time - time_sent > 5:  # Timeout 2 sekundy
                     self.send_message(built_packet, self.peer_address)
                     self.unacked_fragments[frag_offset] = (current_time, built_packet)
                     print(f"Retransmitted fragment {frag_offset}.")
@@ -296,58 +296,9 @@ class Peer:
 
             # Kontrola ukončenia
             if len(self.acknowledged_fragments) == num_fragments:
-                print("All fragments acknowledged.")
+                print(f"------------- All fragments acknowledged ({len(self.acknowledged_fragments)}). -------------")
                 break
 
-    # Fragmentovanie
-    """def _send_payload_in_fragments(self, payload, flags):
-        payload_size = len(payload)
-        max_payload_size = int(input("Enter MAX_PAYLOAD_SIZE (default 1024): ") or "1024")
-        
-        # Simulácia poškodenia
-        corruption_choice = input("Simulate corruption? (Y/N): ").strip().upper() == 'Y'
-        corruption_type = None
-        corrupt_fragment = None
-        if corruption_choice:
-            corruption_type = int(input("Corruption type (1: Payload, 2: CRC): "))
-            corrupt_fragment = int(input("Which fragment to corrupt? (1-based index): ")) - 1
-        
-        # Urč počet fragmentov
-        num_fragments = (payload_size + max_payload_size - 1) // max_payload_size
-
-        # Pošli štartovací paket
-        start_frag_flags = flags | (1 << 7)  # Nastav bit start_frag
-        start_packet = Header(start_frag_flags, payload_size=num_fragments, frag_offset=0, crc_field=0, payload=b'')
-        self.send_message(start_packet.build_packet(), self.peer_address)
-        print(f"Start fragment sent with total fragments: {num_fragments}")
-
-        # Odosielanie fragmentov
-        for i in range(num_fragments):
-            start = i * max_payload_size
-            end = min(start + max_payload_size, payload_size)
-            fragment = payload[start:end]
-
-            frag_flags = flags  # Bežné flagy (bez start_frag)
-            packet = Header(frag_flags, len(fragment), i, crc_field=0, payload=fragment)
-            built_packet = packet.build_packet()
-
-            # Aplikácia simulácie poškodenia
-            if corruption_choice and i == corrupt_fragment:
-                if corruption_type == 1:  # Poškodenie payloadu
-                    print(f"Corrupting payload of fragment {i + 1}.")
-                    # Poškodenie payloadu priamo v zostavenom pakete
-                    built_packet = built_packet[:7] + b'\xFF' + built_packet[8:]
-                elif corruption_type == 2:  # Poškodenie CRC
-                    print(f"Corrupting CRC of fragment {i + 1}.")
-                    # Extrakcia a úprava CRC
-                    original_crc = struct.unpack('!H', built_packet[5:7])[0]  # Získaj pôvodný CRC
-                    corrupt_crc = (original_crc + 1) & 0xFFFF  # Pripočítaj 1 a zachovaj 16-bitovú hodnotu
-                    corrupt_crc_bytes = struct.pack('!H', corrupt_crc)  # Zmeň na bajty
-                    built_packet = built_packet[:5] + corrupt_crc_bytes + built_packet[7:]  # Nahraď CRC
-
-            # Odošli (poškodený alebo originálny) paket
-            self.send_message(built_packet, self.peer_address)
-            print(f"Fragment {i + 1}/{num_fragments} sent with frag_offset: {i}")"""
 
 
     #metoda na vymienanie sprav
@@ -365,6 +316,7 @@ class Peer:
 
         #debug, neskor prec
         print(f"{self.__class__.__name__} closed...")
+
 
 class Client(Peer):
     def __init__(self, ip ,port) -> None:
@@ -406,6 +358,7 @@ class Client(Peer):
     def send_packet(self):
         self.peer_address=(self.server_ip,self.server_port)
         super().send_packet()
+
 
 class Server(Peer):
     def __init__(self, ip, port) -> None:
