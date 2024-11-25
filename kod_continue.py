@@ -73,15 +73,6 @@ class Header:
         payload=packet[7:7+payload_size] #data/sprava
         decoded_flags = Header.decode_flags(flags)  # Rozloženie flagov
 
-        # Kontrola
-        #calculated_crc = binascii.crc_hqx(payload, 0xFFFF)
-        #print(f"\nExpected CRC: {crc_field}, Calculated CRC: {calculated_crc}")
-
-        # CRC kontrola
-        #if calculated_crc != crc_field:
-            #print("chybicka")
-            #raise ValueError(f"CRC check failed: expected {crc_field}, got {calculated_crc} in packet {frag_offset+1}")
-
         return {
             'flags':decoded_flags, 
             'payload_size':payload_size, 
@@ -181,7 +172,7 @@ class Peer:
     # Spracovanie NACK správ.
     def handle_nack(self, frag_offset):
         print(f"+++ Received NACK for fragment {frag_offset}. +++")
-        print(self.unacked_fragments)
+        #print(self.unacked_fragments)
         if frag_offset in self.unacked_fragments:
             _, built_packet = self.unacked_fragments[frag_offset]
             fixed_packet=built_packet[:8]+built_packet[9:]
@@ -295,7 +286,7 @@ class Peer:
             # Skontrolovať, či sme prijali všetky fragmenty
             if len(self.reassembly_buf) == self.expected_fragments:
                 message=f"All fragments received ({len(self.reassembly_buf)})."
-                print(f"\n{"-"*((100-message)//2)} All fragments received ({len(self.reassembly_buf)}). {"-"*((100-message)//2)}-\nReassembling data...")
+                print(f"\n{"-"*((100-len(message))//2)} All fragments received ({len(self.reassembly_buf)}). {"-"*((100-len(message))//2)}-\nReassembling data...")
                 reassembled_data = b''.join(
                     self.reassembly_buf[i] for i in range(self.expected_fragments)
                 )
@@ -318,7 +309,7 @@ class Peer:
                         with open(full_path, "wb") as file:
                             file.write(reassembled_data)
                         print(f"^^^ File successfully saved at: {full_path} ^^^")
-                        print("-" * 100)
+                        print("-" * 102)
                     except FileNotFoundError:
                         print("!!! Invalid directory. File not saved. !!!")
                     except Exception as e:
@@ -430,32 +421,27 @@ class Peer:
                     if i not in self.acknowledged_fragments:
                         self.send_message(built_packet, self.peer_address)
                         self.unacked_fragments[i] = (time.time(), built_packet)
-                        print(f"--- Sent fragment {i}/{num_fragments} ({len(fragment)-1} bytes). ---")
+                        print(f"--- Sent fragment {i}/{num_fragments} ({len(fragment)} bytes). ---")
 
             # Spracovanie timeoutov a retransmisie
-            """current_time = time.time()
+            current_time = time.time()  # Získanie aktuálneho času.
+
             for frag_offset, (time_sent, built_packet) in list(self.unacked_fragments.items()):
                 if current_time - time_sent > 2:  # Timeout 2 sekundy
-                    self.send_message(built_packet, self.peer_address)
-                    self.unacked_fragments[frag_offset] = (current_time, built_packet)
-                    print(f"Retransmitted fragment {frag_offset}.")"""
+                    self.send_message(built_packet, self.peer_address)  # Retransmisia fragmentu.
+                    self.unacked_fragments[frag_offset] = (current_time, built_packet)  # Aktualizácia časovej pečiatky.
+                    print(f"Retransmitted fragment {frag_offset}. (retrans)")
 
             # Posun sliding window
             while base in self.acknowledged_fragments:
                 base += 1
             
-            if len(self.acknowledged_fragments)!=num_fragments and num_fragments-1 in self.acknowledged_fragments:
-                #print("\n\nzle je")
-                #print(self.unacked_fragments)
-
-                #print(self.acknowledged_fragments)
-                break
 
 
             # Kontrola ukončenia
             if len(self.acknowledged_fragments) == num_fragments:
                 message=f"All fragments acknowledged ({len(self.acknowledged_fragments)})."
-                print(f"{"-"*((100-message)//2)} All fragments acknowledged ({len(self.acknowledged_fragments)}). {"-"*((100-message)//2)}")
+                print(f"{"-"*((100-len(message))//2)} All fragments acknowledged ({len(self.acknowledged_fragments)}). {"-"*((100-len(message))//2)}")
                 break
 
 
