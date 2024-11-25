@@ -74,12 +74,13 @@ class Header:
         decoded_flags = Header.decode_flags(flags)  # Rozloženie flagov
 
         # Kontrola
-        calculated_crc = binascii.crc_hqx(payload, 0xFFFF)
+        #calculated_crc = binascii.crc_hqx(payload, 0xFFFF)
         #print(f"\nExpected CRC: {crc_field}, Calculated CRC: {calculated_crc}")
 
         # CRC kontrola
-        if calculated_crc != crc_field:
-            raise ValueError(f"CRC check failed: expected {crc_field}, got {calculated_crc} in packet {frag_offset+1}")
+        #if calculated_crc != crc_field:
+            #print("chybicka")
+            #raise ValueError(f"CRC check failed: expected {crc_field}, got {calculated_crc} in packet {frag_offset+1}")
 
         return {
             'flags':decoded_flags, 
@@ -141,40 +142,53 @@ class Peer:
     def receive_packet(self):
         while self.running_th:
             data, self.peer_address = self.sock.recvfrom(2048)
-            try:
-                packet = Header.parse_packet(data)
-                if packet['flags']['signal'] and packet['flags']['ack']:
+            packet = Header.parse_packet(data)
+
+            if packet['flags']['ack']:
+                 # Heartbeat start
+                if packet['flags']['signal']:
+                    print("signalovy ack - heartbeat")
+                # Uspesny prenos fragmentu
+                else:
+                    #print(packet)
                     self.handle_ack(packet['frag_offset'])
 
-                elif packet['flags']['nack'] and not packet['flags']['heartbeat']:
-                    self.handle_nack(packet['frag_offset'])
+            # Chyba v prenose - crc - nack, frag_offset
+            elif packet['flags']['nack']:
+                self.handle_nack(packet['frag_offset'])
 
-                elif packet['flags']['heartbeat']:
-                    self.handle_heartbeat(packet)
+            #elif packet['flags']['heartbeat']:
+                #self.handle_heartbeat(packet)
 
-                elif packet['flags']['msg'] or packet['flags']['file']:
-                    self.is_active = True
-                    self.handle_fragment(packet)
-                    self.is_active = False
+            # Fragmenty prenosu
+            elif packet['flags']['msg'] or packet['flags']['file']:
+                self.is_active = True
+                self.handle_fragment(packet)
+                self.is_active = False
 
-            except ValueError as e:
-                print(f"Error parsing packet: {e}")
+
 
 
     # Spracovanie ACK správ
     def handle_ack(self, frag_offset):
-        print(f"+++ Received ACK for fragment {frag_offset+1} +++")
+        print(f"+++ Received ACK for fragment {frag_offset} +++")
+        
+        # Vymaz ho zo zoznamu neoverenych
         if frag_offset in self.unacked_fragments:
             del self.unacked_fragments[frag_offset]
             self.acknowledged_fragments.add(frag_offset)
 
     # Spracovanie NACK správ.
     def handle_nack(self, frag_offset):
-        print(f"--- Received NACK for fragment {frag_offset+1}. ---")
+        print(f"+++ Received NACK for fragment {frag_offset}. +++")
+        print(self.unacked_fragments)
         if frag_offset in self.unacked_fragments:
             _, built_packet = self.unacked_fragments[frag_offset]
-            self.send_message(built_packet, self.peer_address)
-            print(f"--- Retransmitted fragment {frag_offset+1} due to NACK. ---")
+            fixed_packet=built_packet[:8]+built_packet[9:]
+            print(built_packet)
+            print(fixed_packet)
+            self.send_message(fixed_packet, self.peer_address)
+            print(f"--- Retransmitted fragment {frag_offset} due to NACK. ---")
     
     # Prijem HB spravy
     def handle_heartbeat(self, packet):
@@ -256,7 +270,7 @@ class Peer:
             # Štartovací paket
             self.expected_fragments = packet['payload_size']
             self.reassembly_buf = {}  # Inicializácia bufferu pre nový prenos
-            print(f"\n+++ Start packet received. Expecting {self.expected_fragments} fragments. +++")
+            print(f"\n{"-"*100}\n+++ Start packet received. Expecting {self.expected_fragments} fragments. +++")
             return
 
         if frag_offset in self.reassembly_buf:
@@ -264,9 +278,14 @@ class Peer:
 
         try:
             # Validácia CRC a ukladanie
+            #print(packet['payload'])
+            #payload=packet[7:7+packet['payload_size']]
+            calculated_crc = binascii.crc_hqx(packet['payload'], 0xFFFF)
+            if calculated_crc != packet['crc_field']:
+                raise ValueError(f"CRC mismatch for fragment {frag_offset}: expected {packet['crc_field']}, got {calculated_crc}")
+            
             self.reassembly_buf[frag_offset] = packet['payload']
-            print(f"\r+++ Fragment {frag_offset+1} / {self.expected_fragments} received and stored. +++", end='', flush=True)
-            time.sleep(0.1)
+            print(f"+++ Fragment {frag_offset} / {self.expected_fragments} received and stored. +++")
 
             # Poslať ACK
             ack_flags = Header.encode_flags(ack=True)
@@ -275,19 +294,20 @@ class Peer:
 
             # Skontrolovať, či sme prijali všetky fragmenty
             if len(self.reassembly_buf) == self.expected_fragments:
-                print(f"\n------------- All fragments received ({len(self.reassembly_buf)}). -------------\nReassembling data...")
+                message=f"All fragments received ({len(self.reassembly_buf)})."
+                print(f"\n{"-"*((100-message)//2)} All fragments received ({len(self.reassembly_buf)}). {"-"*((100-message)//2)}-\nReassembling data...")
                 reassembled_data = b''.join(
                     self.reassembly_buf[i] for i in range(self.expected_fragments)
                 )
                 print(f"+++ Reassembled data (size: {len(reassembled_data)} bytes). +++")
-                print("Press Enter to continue")
+                #print("Press Enter to continue")
                 
                 # Spracovanie dát na základe flagov
                 if packet['flags']['msg']:
                     # Ak ide o správu, vypíš ju ako text
                     print("+++ Received message: +++")
                     print(reassembled_data.decode('utf-8', errors='replace'))
-                    print("\n")
+                    #print("\n")
                 elif packet['flags']['file']:
                     # Ak ide o súbor, vypýtaj si cestu na uloženie
                     save_dir = input("Enter the directory to save the file (default: current directory): ").strip() or "."
@@ -297,14 +317,16 @@ class Peer:
                     try:
                         with open(full_path, "wb") as file:
                             file.write(reassembled_data)
-                        print(f"+++ File successfully saved at: {full_path} +++\n----------------------------------------------------")
+                        print(f"^^^ File successfully saved at: {full_path} ^^^")
+                        print("-" * 100)
                     except FileNotFoundError:
                         print("!!! Invalid directory. File not saved. !!!")
                     except Exception as e:
                         print(f"!!! Error saving file: {e} !!!")
 
         except ValueError as e:
-            print(f"Fragment {frag_offset} failed CRC check: {e}")
+            print(f"!!! {e} !!!")
+
             # Poslať NACK pre poškodený fragment
             nack_flags = Header.encode_flags(nack=True)
             nack_packet = Header(nack_flags, payload_size=0, frag_offset=frag_offset, crc_field=0, payload=b'')
@@ -374,7 +396,7 @@ class Peer:
         if corruption_choice:
             corruption_type = int(input("Corruption type (1: Payload, 2: CRC): "))
             corrupt_fragment = int(input("Which fragment to corrupt? (1-based index): ")) - 1
-
+        print("-"*100)
 
         base = 0  # Sliding window začiatok
 
@@ -392,37 +414,48 @@ class Peer:
                     # Simulácia poškodenia
                     if corruption_choice and i == corrupt_fragment:
                         if corruption_type == 1:  # Poškodenie payloadu
-                            print(f"Corrupting payload of fragment {i + 1}.")
+                            print(f"Corrupting payload of fragment {i}.")
                             # Poškodenie payloadu priamo v zostavenom pakete
-                            built_packet = built_packet[:7] + b'\xFF' + built_packet[8:]
+                            built_packet = built_packet[:8] + b'F' + built_packet[8:]
                         elif corruption_type == 2:  # Poškodenie CRC
-                            print(f"Corrupting CRC of fragment {i + 1}.")
+                            print(f"Corrupting CRC of fragment {i}.")
                             # Extrakcia a úprava CRC
                             original_crc = struct.unpack('!H', built_packet[5:7])[0]  # Získaj pôvodný CRC
                             corrupt_crc = (original_crc + 1) & 0xFFFF  # Pripočítaj 1 a zachovaj 16-bitovú hodnotu
                             corrupt_crc_bytes = struct.pack('!H', corrupt_crc)  # Zmeň na bajty
                             built_packet = built_packet[:5] + corrupt_crc_bytes + built_packet[7:]
 
-
-                    self.send_message(built_packet, self.peer_address)
-                    self.unacked_fragments[i] = (time.time(), built_packet)
-                    print(f"--- Sent fragment {i+1}/{num_fragments} ({len(fragment)} bytes). ---")
+                    #print("\n\njebe ti moc")
+                    #print(i, self.unacked_fragments, i in self.unacked_fragments)
+                    if i not in self.acknowledged_fragments:
+                        self.send_message(built_packet, self.peer_address)
+                        self.unacked_fragments[i] = (time.time(), built_packet)
+                        print(f"--- Sent fragment {i}/{num_fragments} ({len(fragment)-1} bytes). ---")
 
             # Spracovanie timeoutov a retransmisie
-            current_time = time.time()
+            """current_time = time.time()
             for frag_offset, (time_sent, built_packet) in list(self.unacked_fragments.items()):
-                if current_time - time_sent > 5:  # Timeout 2 sekundy
+                if current_time - time_sent > 2:  # Timeout 2 sekundy
                     self.send_message(built_packet, self.peer_address)
                     self.unacked_fragments[frag_offset] = (current_time, built_packet)
-                    print(f"Retransmitted fragment {frag_offset}.")
+                    print(f"Retransmitted fragment {frag_offset}.")"""
 
             # Posun sliding window
             while base in self.acknowledged_fragments:
                 base += 1
+            
+            if len(self.acknowledged_fragments)!=num_fragments and num_fragments-1 in self.acknowledged_fragments:
+                #print("\n\nzle je")
+                #print(self.unacked_fragments)
+
+                #print(self.acknowledged_fragments)
+                break
+
 
             # Kontrola ukončenia
             if len(self.acknowledged_fragments) == num_fragments:
-                print(f"------------- All fragments acknowledged ({len(self.acknowledged_fragments)}). -------------")
+                message=f"All fragments acknowledged ({len(self.acknowledged_fragments)})."
+                print(f"{"-"*((100-message)//2)} All fragments acknowledged ({len(self.acknowledged_fragments)}). {"-"*((100-message)//2)}")
                 break
 
 
@@ -480,7 +513,7 @@ class Client(Peer):
             self.send_message(ack_packet, self.peer_address)
 
             # Spusti heartbeat mechanizmus
-            self.start_heartbeat()
+            #self.start_heartbeat()
             return True
         return False
 
@@ -521,7 +554,7 @@ class Server(Peer):
                 print("Received ACK, connection complete!")
 
                 # Spusti heartbeat mechanizmus
-                self.start_heartbeat()
+                #self.start_heartbeat()
                 return True
         
         return False
