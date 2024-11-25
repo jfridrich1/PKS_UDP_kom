@@ -79,7 +79,7 @@ class Header:
 
         # CRC kontrola
         if calculated_crc != crc_field:
-            raise ValueError(f"CRC check failed: expected {crc_field}, got {calculated_crc}")
+            raise ValueError(f"CRC check failed: expected {crc_field}, got {calculated_crc} in packet {frag_offset+1}")
 
         return {
             'flags':decoded_flags, 
@@ -168,7 +168,8 @@ class Peer:
         try:
             # Validácia CRC a ukladanie
             self.reassembly_buf[frag_offset] = packet['payload']
-            print(f"+++ Fragment {frag_offset+1} received and stored. +++")
+            print(f"\r+++ Fragment {frag_offset+1} / {self.expected_fragments} received and stored. +++", end='', flush=True)
+            time.sleep(0.1)
 
             # Poslať ACK
             ack_flags = Header.encode_flags(ack=True)
@@ -177,11 +178,12 @@ class Peer:
 
             # Skontrolovať, či sme prijali všetky fragmenty
             if len(self.reassembly_buf) == self.expected_fragments:
-                print(f"------------- All fragments received ({len(self.reassembly_buf)}). -------------\nReassembling data...")
+                print(f"\n------------- All fragments received ({len(self.reassembly_buf)}). -------------\nReassembling data...")
                 reassembled_data = b''.join(
                     self.reassembly_buf[i] for i in range(self.expected_fragments)
                 )
                 print(f"+++ Reassembled data (size: {len(reassembled_data)} bytes). +++")
+                print("Press Enter to continue")
                 
                 # Spracovanie dát na základe flagov
                 if packet['flags']['msg']:
@@ -198,7 +200,7 @@ class Peer:
                     try:
                         with open(full_path, "wb") as file:
                             file.write(reassembled_data)
-                        print(f"+++ File successfully saved at: {full_path} +++")
+                        print(f"+++ File successfully saved at: {full_path} +++\n----------------------------------------------------")
                     except FileNotFoundError:
                         print("!!! Invalid directory. File not saved. !!!")
                     except Exception as e:
@@ -267,6 +269,16 @@ class Peer:
         self.send_message(start_packet.build_packet(), self.peer_address)
         print(f"+++ Start fragment sent with total fragments: {num_fragments}. +++")
 
+
+        # Simulácia poškodenia
+        corruption_choice = input("Simulate corruption? (Y/N): ").strip().upper() == 'Y'
+        corruption_type = None
+        corrupt_fragment = None
+        if corruption_choice:
+            corruption_type = int(input("Corruption type (1: Payload, 2: CRC): "))
+            corrupt_fragment = int(input("Which fragment to corrupt? (1-based index): ")) - 1
+
+
         base = 0  # Sliding window začiatok
 
         while base < num_fragments:
@@ -278,6 +290,23 @@ class Peer:
                     fragment = payload[start:end]
                     packet = Header(flags, len(fragment), i, crc_field=0, payload=fragment)
                     built_packet = packet.build_packet()
+
+
+                    # Simulácia poškodenia
+                    if corruption_choice and i == corrupt_fragment:
+                        if corruption_type == 1:  # Poškodenie payloadu
+                            print(f"Corrupting payload of fragment {i + 1}.")
+                            # Poškodenie payloadu priamo v zostavenom pakete
+                            built_packet = built_packet[:7] + b'\xFF' + built_packet[8:]
+                        elif corruption_type == 2:  # Poškodenie CRC
+                            print(f"Corrupting CRC of fragment {i + 1}.")
+                            # Extrakcia a úprava CRC
+                            original_crc = struct.unpack('!H', built_packet[5:7])[0]  # Získaj pôvodný CRC
+                            corrupt_crc = (original_crc + 1) & 0xFFFF  # Pripočítaj 1 a zachovaj 16-bitovú hodnotu
+                            corrupt_crc_bytes = struct.pack('!H', corrupt_crc)  # Zmeň na bajty
+                            built_packet = built_packet[:5] + corrupt_crc_bytes + built_packet[7:]
+
+
                     self.send_message(built_packet, self.peer_address)
                     self.unacked_fragments[i] = (time.time(), built_packet)
                     print(f"--- Sent fragment {i+1}/{num_fragments} ({len(fragment)} bytes). ---")
