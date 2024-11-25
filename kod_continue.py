@@ -118,6 +118,9 @@ class Peer:
         self.heartbeat_started = False  # Indikuje, či bol odoslaný "heartbeat start"
         self.expecting_reply = False    # Indikuje, či očakávame odpoveď na heartbeat
 
+        self.last_sent_heartbeat = None
+
+
     def start_heartbeat(self):
         """Spustenie heartbeat mechanizmu po úspešnom handshake."""
         if not self.handshake_completed:
@@ -179,33 +182,49 @@ class Peer:
         if packet['flags']['heartbeat'] and packet['flags']['syn']:
             # Prijatý "heartbeat start"
             print(f"+++ Received 'heartbeat start' from {self.peer_address}. +++")
-            # Odpovedz "heartbeat reply"
             heartbeat_reply_flags = Header.encode_flags(heartbeat=True, ack=True)
             reply_packet = Header(
                 heartbeat_reply_flags, payload_size=0, frag_offset=0, crc_field=0, payload=b''
             )
             self.send_message(reply_packet.build_packet(), self.peer_address)
-            self.expecting_reply = False
+            self.missed_heartbeats = 0  # Reset missed heartbeats
             print("+++ Sent 'heartbeat reply' in response to 'heartbeat start'. +++")
 
         elif packet['flags']['heartbeat'] and packet['flags']['ack']:
             # Prijatý "heartbeat reply"
             print(f"+++ Received 'heartbeat reply' from {self.peer_address}. +++")
+            self.missed_heartbeats = 0  # Reset missed heartbeats
             self.expecting_reply = False
 
 
 
     # Odoslanie HB spravy
     def send_heartbeat(self):
-        """Riadenie odosielania heartbeat správ."""
+        """Správa heartbeat mechanizmu."""
         while self.running_th:
             time.sleep(self.heartbeat_interval)
 
-            # Preskoč, ak prebieha prenos dát
+            # Ak je aktívna výmena správ, neodosielaj heartbeat
             if self.is_active:
                 continue
 
-            # Ak ešte nebol odoslaný "heartbeat start", odošli ho
+            # Ak sme už poslali heartbeat start, očakávame odpoveď
+            if self.heartbeat_started and self.expecting_reply:
+                # Skontrolujeme timeout pre heartbeat
+                if (
+                    self.last_sent_heartbeat
+                    and time.time() - self.last_sent_heartbeat > self.heartbeat_interval
+                ):
+                    self.missed_heartbeats += 1
+                    print(f"!!! Missed heartbeat reply ({self.missed_heartbeats}/{self.max_missed_heartbeats}) !!!")
+
+                    if self.missed_heartbeats >= self.max_missed_heartbeats:
+                        print("!!! Connection lost. Closing connection. !!!")
+                        self.running_th = False
+                        self.quit()
+                        return
+
+            # Ak ešte nebol poslaný heartbeat start, odošli ho
             if not self.heartbeat_started:
                 heartbeat_start_flags = Header.encode_flags(heartbeat=True, syn=True)
                 heartbeat_start_packet = Header(
@@ -214,21 +233,19 @@ class Peer:
                 self.send_message(heartbeat_start_packet.build_packet(), self.peer_address)
                 self.heartbeat_started = True
                 self.expecting_reply = True
+                self.last_sent_heartbeat = time.time()
                 print("\n+++ Sent 'heartbeat start'. +++")
-                continue
 
-            # Po odoslaní "heartbeat start", pokračuj s "heartbeat reply"
-            if self.expecting_reply:
-                # Počkajte na odpoveď pred ďalším krokom
-                continue
-
-            # Odoslanie "heartbeat reply"
-            heartbeat_reply_flags = Header.encode_flags(heartbeat=True, ack=True)
-            heartbeat_reply_packet = Header(
-                heartbeat_reply_flags, payload_size=0, frag_offset=0, crc_field=0, payload=b''
-            )
-            self.send_message(heartbeat_reply_packet.build_packet(), self.peer_address)
-            print("+++ Sent 'heartbeat reply'. +++")
+            # Ak už heartbeat prebieha, posielame heartbeat reply
+            elif self.heartbeat_started and not self.expecting_reply:
+                heartbeat_reply_flags = Header.encode_flags(heartbeat=True, ack=True)
+                heartbeat_reply_packet = Header(
+                    heartbeat_reply_flags, payload_size=0, frag_offset=0, crc_field=0, payload=b''
+                )
+                self.send_message(heartbeat_reply_packet.build_packet(), self.peer_address)
+                self.last_sent_heartbeat = time.time()
+                self.expecting_reply = True
+                print("+++ Sent 'heartbeat reply'. +++")
 
 
     # Spracovanie prijatých fragmentov
@@ -568,4 +585,14 @@ if __name__ == "__main__":
 
 #poskodenie a strata dat - Selective Repeat SR, mozno tu vylepsienu metodu
     #metoda Selective Repeat
-#Keep Alive - heartbeat mozno este dneska
+
+
+
+#VECI NA TESTOVANIE!!!
+"""
+- otestovvat rozne ip a porty
+- poskodenie fragmentov + oprava umyselne poskodenych fragmentov?
+    - opravit vystup konecny
+- heartbeat aj pocas prenosu dat??? zjavne ano popici
+- po spraveni ^ aj otestovat
+"""
