@@ -98,27 +98,10 @@ class Peer:
         self.window_size = 4  # Sliding window veľkosť
         self.unacked_fragments = {}  # Neodpovedané fragmenty: {frag_offset: (time_sent, built_packet)}
 
-        self.is_active = False
-
-        # Heartbeat-related attributes
-        self.handshake_completed = False  # Indikuje, či handshake prebehol úspešne
-        self.last_received_heartbeat = time.time()
-        self.heartbeat_interval = 5  # Seconds
-        self.missed_heartbeats = 0
-        self.max_missed_heartbeats = 3
-
-        self.heartbeat_started = False  # Indikuje, či bol odoslaný "heartbeat start"
-        self.expecting_reply = False    # Indikuje, či očakávame odpoveď na heartbeat
-
-        self.last_sent_heartbeat = None
+        
 
 
-    def start_heartbeat(self):
-        """Spustenie heartbeat mechanizmu po úspešnom handshake."""
-        if not self.handshake_completed:
-            self.handshake_completed = True
-            self.heartbeat_thread = threading.Thread(target=self.send_heartbeat)
-            self.heartbeat_thread.start()
+    
 
     #odosielanie sprav - pre SYN, SYN ACK, ACK, asi mozem odstranit
     def send_message(self, message, receiver=None):
@@ -136,20 +119,15 @@ class Peer:
             packet = Header.parse_packet(data)
 
             if packet['flags']['ack']:
-                 # Heartbeat start
-                if packet['flags']['signal']:
-                    print("signalovy ack - heartbeat")
-                # Uspesny prenos fragmentu
-                else:
-                    #print(packet)
-                    self.handle_ack(packet['frag_offset'])
+                self.handle_ack(packet['frag_offset'])
 
             # Chyba v prenose - crc - nack, frag_offset
             elif packet['flags']['nack']:
                 self.handle_nack(packet['frag_offset'])
 
-            #elif packet['flags']['heartbeat']:
-                #self.handle_heartbeat(packet)
+            elif packet['flags']['heartbeat']:
+                #logika pre spracovanie 
+                pass
 
             # Fragmenty prenosu
             elif packet['flags']['msg'] or packet['flags']['file']:
@@ -181,77 +159,11 @@ class Peer:
             self.send_message(fixed_packet, self.peer_address)
             print(f"--- Retransmitted fragment {frag_offset} due to NACK. ---")
     
-    # Prijem HB spravy
-    def handle_heartbeat(self, packet):
-        """Spracovanie heartbeat správ."""
-        if packet['flags']['heartbeat'] and packet['flags']['syn']:
-            # Prijatý "heartbeat start"
-            print(f"+++ Received 'heartbeat start' from {self.peer_address}. +++")
-            heartbeat_reply_flags = Header.encode_flags(heartbeat=True, ack=True)
-            reply_packet = Header(
-                heartbeat_reply_flags, payload_size=0, frag_offset=0, crc_field=0, payload=b''
-            )
-            self.send_message(reply_packet.build_packet(), self.peer_address)
-            self.missed_heartbeats = 0  # Reset missed heartbeats
-            print("+++ Sent 'heartbeat reply' in response to 'heartbeat start'. +++")
-
-        elif packet['flags']['heartbeat'] and packet['flags']['ack']:
-            # Prijatý "heartbeat reply"
-            print(f"+++ Received 'heartbeat reply' from {self.peer_address}. +++")
-            self.missed_heartbeats = 0  # Reset missed heartbeats
-            self.expecting_reply = False
+    
 
 
 
-    # Odoslanie HB spravy
-    def send_heartbeat(self):
-        """Správa heartbeat mechanizmu."""
-        while self.running_th:
-            time.sleep(self.heartbeat_interval)
-
-            # Ak je aktívna výmena správ, neodosielaj heartbeat
-            if self.is_active:
-                continue
-
-            # Ak sme už poslali heartbeat start, očakávame odpoveď
-            if self.heartbeat_started and self.expecting_reply:
-                # Skontrolujeme timeout pre heartbeat
-                if (
-                    self.last_sent_heartbeat
-                    and time.time() - self.last_sent_heartbeat > self.heartbeat_interval
-                ):
-                    self.missed_heartbeats += 1
-                    print(f"!!! Missed heartbeat reply ({self.missed_heartbeats}/{self.max_missed_heartbeats}) !!!")
-
-                    if self.missed_heartbeats >= self.max_missed_heartbeats:
-                        print("!!! Connection lost. Closing connection. !!!")
-                        self.running_th = False
-                        self.quit()
-                        return
-
-            # Ak ešte nebol poslaný heartbeat start, odošli ho
-            if not self.heartbeat_started:
-                heartbeat_start_flags = Header.encode_flags(heartbeat=True, syn=True)
-                heartbeat_start_packet = Header(
-                    heartbeat_start_flags, payload_size=0, frag_offset=0, crc_field=0, payload=b''
-                )
-                self.send_message(heartbeat_start_packet.build_packet(), self.peer_address)
-                self.heartbeat_started = True
-                self.expecting_reply = True
-                self.last_sent_heartbeat = time.time()
-                print("\n+++ Sent 'heartbeat start'. +++")
-
-            # Ak už heartbeat prebieha, posielame heartbeat reply
-            elif self.heartbeat_started and not self.expecting_reply:
-                heartbeat_reply_flags = Header.encode_flags(heartbeat=True, ack=True)
-                heartbeat_reply_packet = Header(
-                    heartbeat_reply_flags, payload_size=0, frag_offset=0, crc_field=0, payload=b''
-                )
-                self.send_message(heartbeat_reply_packet.build_packet(), self.peer_address)
-                self.last_sent_heartbeat = time.time()
-                self.expecting_reply = True
-                print("+++ Sent 'heartbeat reply'. +++")
-
+    
 
     # Spracovanie prijatých fragmentov
     def handle_fragment(self, packet):
@@ -499,7 +411,7 @@ class Client(Peer):
             self.send_message(ack_packet, self.peer_address)
 
             # Spusti heartbeat mechanizmus
-            #self.start_heartbeat()
+            self.start_heartbeat()
             return True
         return False
 
@@ -540,7 +452,7 @@ class Server(Peer):
                 print("Received ACK, connection complete!")
 
                 # Spusti heartbeat mechanizmus
-                #self.start_heartbeat()
+                self.start_heartbeat()
                 return True
         
         return False
